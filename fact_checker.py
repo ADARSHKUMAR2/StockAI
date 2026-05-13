@@ -12,6 +12,11 @@ import asyncio
 from pydantic import BaseModel, Field
 from datetime import datetime
 from ddgs import DDGS
+from typing_extensions import TypedDict
+import chromadb
+
+chroma_client = chromadb.PersistentClient(path="./chroma_memory")
+memory_collection = chroma_client.get_or_create_collection(name="market_research")
 
 class MarketShareResult(BaseModel):
     company: str
@@ -32,6 +37,7 @@ client = wrappers.wrap_openai(AsyncOpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY")
 ))
 
+#Short term memory
 session = SQLiteSession(
     session_id="market_share_chat", 
     db_path="agent_memory.db"
@@ -49,19 +55,43 @@ def search_the_web(query: str) -> str:
     except Exception as e:
         return "Search failed."
 
+        # Tool to Save Data to Long-Term Memory ---
+@function_tool
+def save_to_memory(fact: str) -> str:
+    """Use this tool to permanently save an important statistic or fact to your long-term memory."""
+    import uuid
+    print(f"🧠 Saving to Vector DB: {fact[:50]}...")
+    memory_collection.add(
+        documents=[fact],
+        ids=[str(uuid.uuid4())] # Give the memory a unique ID
+    )
+    return "Fact successfully saved to long-term memory."
+
+# --- Tool to Retrieve Data from Long-Term Memory ---
+@function_tool
+def search_memory(query: str) -> str:
+    """Use this tool to search your long-term memory for previously researched facts before searching the web."""
+    print(f"🧠 Searching Vector DB for: {query}")
+    results = memory_collection.query(
+        query_texts=[query],
+        n_results=2 # Grab the top 2 most relevant past memories
+    )
+    # If memories exist, return them!
+    if results['documents'] and results['documents'][0]:
+        return "\n".join(results['documents'][0])
+    return "No relevant memories found."
+
 current_date = datetime.now().strftime("%Y-%m-%d")
 # Define the instructions for the fact-checker AI Agent
 stock_instructions = f"""
 Context:
-You are a fact-checker who verifies the accuracy of statements.
-Today's date is {current_date}. 
+You are a fact-checker who verifies the accuracy of statements. Today's date is {current_date}. 
 
 Instructions:
-When given a statement, carefully analyze its factual accuracy. 
-If the statement involves current events, market shares, or recent statistics, 
-you MUST use your 'search_the_web' tool. 
-
-CRITICAL: Market data is usually reported quarterly or annually. Do not endlessly search for data from the exact current month. If you find data from the most recent completed quarter (e.g., Q1) or the previous full year, accept that as the most current data and provide your verdict.
+1. When asked about a company, FIRST use 'search_memory' to check if you have already researched and saved data about them.
+2. If the data is not in your memory, use 'search_the_web' to find the most recent market share data.
+3. Once you find new data via the web, you MUST immediately use 'save_to_memory' to store it for future use.
+4. Output the final verdict.
 """
 
 agent_model = OpenAIChatCompletionsModel(
@@ -73,7 +103,7 @@ agent_model = OpenAIChatCompletionsModel(
 fact_checker_agent = Agent(name = "Fact_Checker",   # Name of the agent
                            instructions = stock_instructions, # The rules and behavior for the agent
                            model = agent_model,
-                           tools=[search_the_web],
+                           tools=[search_the_web, save_to_memory, search_memory],
                            output_type=MarketShareResult) # The AI model (LLM) to use
 
 # Print a confirmation message that the agent was created
