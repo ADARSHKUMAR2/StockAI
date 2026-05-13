@@ -5,7 +5,7 @@ load_dotenv(override=True)
 from openai import AsyncOpenAI 
 # Import the Agent class to create and manage AI agents
 # Import the Runner class, which is used to run an agent and get its output
-from agents import Agent, Runner, OpenAIChatCompletionsModel, Tool, function_tool
+from agents import Agent, Runner, OpenAIChatCompletionsModel, Tool, function_tool, SQLiteSession
 from IPython.display import display, Markdown
 from langsmith import traceable, wrappers
 import asyncio
@@ -31,6 +31,11 @@ client = wrappers.wrap_openai(AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY")
 ))
+
+session = SQLiteSession(
+    session_id="market_share_chat", 
+    db_path="agent_memory.db"
+)
 
 print("OpenAI client successfully configured.")
 @function_tool
@@ -75,7 +80,7 @@ fact_checker_agent = Agent(name = "Fact_Checker",   # Name of the agent
 print(f"Agent '{fact_checker_agent.name}' created successfully!")
 
 # A statement we want the Fact Checker agent to verify
-statement = "What is the market share of Tesla in the US EV market?"
+statement = "What about Ford?"
 # statement = input("Enter a statement to fact-check: ")
 
 # Display the statement we're going to check (in markdown format for nicer formatting)
@@ -89,7 +94,8 @@ async def test():
     response = await Runner.run(
         starting_agent = fact_checker_agent,  # The agent we created earlier
         input = statement,  
-        max_turns=5             
+        session=session,
+        max_turns=15             
         # tool_choice="required"
     )
 
