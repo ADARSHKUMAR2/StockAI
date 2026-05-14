@@ -1,49 +1,58 @@
-# Market Share Fact Checker Agent
+# Learn
 
-This project runs an AI fact-checking agent that:
-- checks previously saved company market-share facts from local vector memory,
-- searches the web when memory is missing data,
-- stores new facts back into memory for future use.
+Small Python workspace for experimenting with **OpenAI Agents** (`openai-agents`): a **research → analysis → writing** pipeline backed by **OpenRouter** for chat and **Tavily** for web search.
 
-It also includes utility scripts to inspect and export the stored memory.
+## Main flow: `mainAgents.py`
 
-## What Is Included
+`mainAgents.py` runs three agents in sequence:
 
-- `fact_checker.py`  
-  Runs the agent with short-term memory (`agent_memory.db`) and long-term vector memory (`chroma_memory/`).
-- `view_memory.py`  
-  Prints all saved facts from the Chroma collection.
-- `export_for_projector.py`  
-  Exports embeddings and text metadata to `vectors.tsv` and `metadata.tsv` (for tools like TensorFlow Embedding Projector).
+1. **Researcher** — uses the Tavily search tool, returns a short structured summary (`AnalysisSummary`).
+2. **Analyst** — reads the research summary and returns trends, risks, and insights (same `AnalysisSummary` shape).
+3. **Writer** — combines the original query, research, and analysis into a `FinalReport` (executive summary, long markdown report, follow-up questions).
+
+The default query is set in the `if __name__ == "__main__":` block; change `query = ...` to try other topics.
+
+```bash
+python mainAgents.py
+```
+
+### Related modules
+
+| File | Role |
+|------|------|
+| `research_agent.py` | Researcher instructions + `AnalysisSummary` model |
+| `analyst_agent.py` | Analyst instructions |
+| `writer_agent.py` | Writer instructions + `FinalReport` model |
+| `tavily_search.py` | `@function_tool` `tavily_search` — POSTs to Tavily’s search API |
+
+There is commented-out code for a single **manager** agent that would call the three workers as tools; the active code uses an explicit `async` pipeline instead.
 
 ## Requirements
 
-- Python `3.12+`
-- An API key for the model backend used in `fact_checker.py` (`OPENROUTER_API_KEY`)
-- (Optional but recommended) LangSmith keys if you want tracing enabled
+- Python **3.12+**
+- **`OPENROUTER_API_KEY`** — used with `AsyncOpenAI` + `https://openrouter.ai/api/v1` and model `openai/gpt-4o-mini`
+- **`TAVILY_API_KEY`** — used by `tavily_search` in `tavily_search.py`
+- **`requests`** — used by the Tavily tool (install with `pip install requests` if it is not already available in your environment)
+
+Optional **LangSmith** tracing is enabled via `@traceable` on `run_pipeline`; set the usual LangSmith env vars if you want traces in LangSmith.
 
 ## Setup
 
-1. Create and activate a virtual environment:
-
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-```
-
-2. Install dependencies:
-
-```bash
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
+pip install requests        # if needed for Tavily
 ```
 
-3. Create a `.env` file in the project root with at least:
+Create a `.env` in the project root (do not commit real keys):
 
 ```env
 OPENROUTER_API_KEY=your_key_here
+TAVILY_API_KEY=your_key_here
 ```
 
-Optional tracing variables used by the current script:
+Optional tracing:
 
 ```env
 LANGCHAIN_TRACING_V2=true
@@ -52,33 +61,14 @@ LANGCHAIN_API_KEY=your_langsmith_key
 LANGCHAIN_PROJECT=your_project_name
 ```
 
-## Run
+## Chroma utilities (optional)
 
-Run the fact-checking agent:
+If you use the local Chroma store under `chroma_memory/` (collection `market_research`):
 
-```bash
-python fact_checker.py
-```
+- **`view_memory.py`** — lists stored documents and IDs.
+- **`export_for_projector.py`** — writes `vectors.tsv` and `metadata.tsv` for embedding visualization tools.
 
-Inspect all stored vector memories:
+## Other scripts
 
-```bash
-python view_memory.py
-```
-
-Export embeddings + metadata for visualization:
-
-```bash
-python export_for_projector.py
-```
-
-## How Memory Works
-
-- **Short-term memory**: `SQLiteSession` stored in `agent_memory.db` (conversation/session context).
-- **Long-term memory**: ChromaDB collection `market_research` in `chroma_memory/` (saved facts).
-
-Agent behavior in `fact_checker.py`:
-1. Search long-term memory first.
-2. If not found, search web.
-3. Save newly found facts into long-term memory.
-4. Return a structured result (`company`, `market_share`, `source`, `explanation`).
+- **`main.py`** — minimal “Hello from learn!” entrypoint.
+- **`test.py`** — small OpenAI client / env sanity check (not part of the main pipeline).

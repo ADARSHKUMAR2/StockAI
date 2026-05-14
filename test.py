@@ -19,8 +19,3 @@ print("OpenAI client successfully configured.")
 
 # Let's view the first few characters in the key
 print(openai_api_key[:5])
-
-# A Function used to Show the given text using Markdown formatting in a Jupyter notebook
-def print_markdown(text):
-    """Displays text as Markdown in Jupyter."""
-    display(Markdown(text))
