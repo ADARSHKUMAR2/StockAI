@@ -3,6 +3,7 @@ from actions.explanation import explain_concept
 from actions.flashcards import generate_flashcards
 from actions.quiz import quiz_me
 from actions.summary import summarize_text
+from actions.email import send_email
 import sys
 
 def build_demo():
@@ -29,6 +30,12 @@ def build_demo():
             n_q = gr.Slider(1, 15, value=5, step=1, label="# Questions")
             out4 = gr.Markdown()
             gr.Button("Start Quiz").click(quiz_me, inputs=[topic_q, lvl_q, n_q], outputs=out4)
+        with gr.Tab("Send Email"):
+            to_addr = gr.Textbox(label="To Address")
+            subj = gr.Textbox(label="Subject")
+            body = gr.Textbox(lines=5, label="Email Body")
+            out_email = gr.Markdown()
+            gr.Button("Send").click(send_email, inputs=[to_addr, subj, body], outputs=out_email)
     return demo
 
 

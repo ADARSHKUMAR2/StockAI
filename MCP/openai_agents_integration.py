@@ -27,6 +27,14 @@ agent = Agent(
     Arguments: { "topic": <str>, "level": <int 1‑5>, "num_questions": <int 1‑15> }  
     • Streams an MC‑question quiz, then an ANSWER KEY section.
 
+    5. **send_email**.
+    Arguments: { "to_address": <str>, "subject": <str>, "body": <str> }
+    
+    If a user asks you to explain a concept or generate a quiz AND email it to them, follow these steps:
+    1. Call the appropriate learning tool (e.g., `explain_concept`).
+    2. Wait for the response.
+    3. Take the content generated from step 1, and call the `send_email` tool.
+
     Objective
     ---------
     Help users learn by:
