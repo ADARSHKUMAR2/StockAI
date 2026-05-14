@@ -1,76 +1,88 @@
 # AI Tutor MCP Toolkit
 
-A small learning toolkit built with **Gradio** and the **Model Context Protocol (MCP)**. Four tutor-style actions—explain concepts, summarize text, generate flashcards, and run quizzes—are implemented as streaming LLM calls (via OpenRouter) and exposed both in a web UI and as MCP tools when Gradio’s MCP server is enabled.
+A small learning stack built with **Gradio**, the **Model Context Protocol (MCP)**, and the **OpenAI Agents SDK** (`agents`). Four tutor actions—explain concepts, summarize text, generate flashcards, and run quizzes—call **OpenRouter** (`openai/gpt-4o-mini`) via an async OpenAI client, stream tokens in the UI, and are also exposed as **MCP tools** when Gradio’s MCP server is enabled.
 
-## Features
+## Surfaces
 
 | Surface | Description |
 |--------|-------------|
-| **Gradio demo** | Tabs for Explain, Summarize, Flashcards, and Quiz with sliders for difficulty, length, and counts. |
-| **MCP over SSE** | Same functions are available to MCP clients at the Gradio MCP endpoint (see below). |
+| **Gradio demo** (`tutor_app.py`) | Tabs for Explain, Summarize, Flashcards, and Quiz. |
+| **MCP over SSE** | Same functions as tools for any MCP client at the Gradio MCP URL (below). |
+| **Agents CLI** (`openai_agents_integration.py`) | An `Agent` + `Runner` loop that connects to the Gradio MCP server and calls those tools in chat. |
 
-Underlying actions live in `actions/` and stream tokens for responsive output.
+Implementation details: `mcp_server.py` configures `AsyncOpenAI` against OpenRouter, registers it with `set_default_openai_client`, and wraps the model in `OpenAIChatCompletionsModel`. Handlers in `actions/` are **async generators** that stream completion chunks.
 
 ## Requirements
 
 - Python 3.10+ (recommended)
-- Packages used by this folder (install as needed):
+- Core packages:
 
 ```bash
-pip install gradio openai python-dotenv
+pip install gradio openai python-dotenv openai-agents
 ```
 
-If you use `mcp_client.py` as written, you also need `requests`, `httpx`, `ipython`, `pillow`, and the OpenAI **Agents** SDK package that provides `agents.mcp.MCPServerSse` (see that file’s imports).
+`mcp_client.py` also imports `requests`, `httpx`, `ipython`, and `pillow`; keep them if you reuse that module as a notebook-style client.
 
 ## Configuration
 
-Create a `.env` file in this directory (or ensure these variables are set in your environment):
+Create a `.env` in the **`MCP`** directory (or export variables in your shell):
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENAI_API_KEY` | Required at import time by `mcp_server.py` (startup check). |
-| `OPENROUTER_API_KEY` | Used for actual API calls; client is configured with `base_url=https://openrouter.ai/api/v1`. |
+| `OPENROUTER_API_KEY` | **Required** by `mcp_server.py` for the async client and for `MODEL_NAME`; missing key prevents startup. |
 
-The model is set in `mcp_server.py` as `MODEL_NAME = "openai/gpt-4o-mini"` on OpenRouter.
+`mcp_client.py` still loads `OPENAI_API_KEY` for compatibility with other snippets; the tutor server path does not require it.
 
 ## Run the Gradio + MCP server
 
-From the **`MCP`** directory (so `actions` and `mcp_server` imports resolve):
+From the **`MCP`** directory so imports resolve:
 
 ```bash
 python tutor_app.py
 ```
 
-By default Gradio listens on **127.0.0.1** (see `tutor_app.py`). The usual HTTP port is **7860** unless you change it.
+Gradio binds to **127.0.0.1** by default (see `tutor_app.py`); HTTP is usually on port **7860** unless you change it.
 
 ### MCP endpoint
 
-After the app is running, the MCP SSE URL is:
+With the app running:
 
 ```text
 http://127.0.0.1:7860/gradio_api/mcp/sse
 ```
 
-You can connect with the [MCP Inspector](https://github.com/modelcontextprotocol/inspector), for example:
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) example:
 
 ```bash
 npx @modelcontextprotocol/inspector http://127.0.0.1:7860/gradio_api/mcp/sse
 ```
 
+If you change host or port, update `MCP_BASE` in `mcp_client.py` to match.
+
+## Run the Agents + MCP chat client
+
+1. Start the Gradio app in one terminal (`python tutor_app.py`).
+2. In another terminal, from **`MCP`**:
+
+```bash
+python openai_agents_integration.py
+```
+
+That script defines an `Agent` wired to `MCPServerSse` (see `mcp_client.py`), connects on startup, runs a `input()` loop, and disconnects on exit. Type `exit` or `quit` to leave the loop.
+
 ## Project layout
 
 | Path | Role |
 |------|------|
-| `tutor_app.py` | Builds the Gradio UI and launches with `mcp_server=True`. |
-| `mcp_server.py` | Loads env vars, configures the OpenRouter OpenAI client and `MODEL_NAME`. |
-| `actions/explanation.py` | Stream explanations by level (1–5). |
-| `actions/summary.py` | Stream summaries with a compression ratio. |
-| `actions/flashcards.py` | Stream JSON-line flashcards for a topic. |
-| `actions/quiz.py` | Stream a multiple-choice quiz with an answer key. |
-| `mcp_client.py` | Example wiring for `MCPServerSse` pointing at the local Gradio MCP URL (requires the Agents SDK). |
+| `tutor_app.py` | Gradio UI; `launch(..., mcp_server=True)`. |
+| `mcp_server.py` | `load_dotenv`, `OPENROUTER_API_KEY`, `AsyncOpenAI` → OpenRouter, `set_default_openai_client`, `OpenAIChatCompletionsModel` as `MODEL_NAME`. |
+| `actions/*.py` | Async streaming tool implementations (`explain_concept`, `summarize_text`, `generate_flashcards`, `quiz_me`). |
+| `mcp_client.py` | `MCPServerSse` config pointing at the local Gradio MCP URL. |
+| `openai_agents_integration.py` | Agent instructions + `Runner` REPL using the MCP tools. |
 
 ## Troubleshooting
 
-- **`OPENAI_API_KEY not found`**: Add `OPENAI_API_KEY` to `.env` or the environment before starting.
-- **Import errors**: Run `python tutor_app.py` from the `MCP` folder, not from the repo root, unless you adjust `PYTHONPATH`.
-- **API errors from OpenRouter**: Confirm `OPENROUTER_API_KEY` and that the chosen model is enabled for your OpenRouter account.
+- **`OPENROUTER_API_KEY not found`**: Set it in `.env` under `MCP/` before importing `mcp_server` or running `tutor_app.py` / `openai_agents_integration.py`.
+- **Import errors**: Run scripts from the `MCP` folder or adjust `PYTHONPATH`.
+- **Agent cannot reach tools**: Ensure `tutor_app.py` is running first and that `MCP_BASE` matches your Gradio URL (including port).
+- **OpenRouter errors**: Confirm the model is allowed for your key and that billing/limits are OK.
