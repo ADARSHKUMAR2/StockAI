@@ -1,4 +1,13 @@
-# tutor_mcp_server.py
+import os
+from dotenv import load_dotenv
+
+load_dotenv(override = True)
+openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+
+from openai import OpenAI, AsyncOpenAI
+from dotenv import load_dotenv
+from agents import OpenAIChatCompletionsModel, set_default_openai_client
+
 """AI Tutor MCP Toolkit
 ======================
 
@@ -7,25 +16,19 @@ Model‑Context‑Protocol (MCP). All functions are OpenAI‑powered, and most s
 partial tokens for low‑latency UX.
 """
 
-import os
-import io
-from typing import Generator, List
-from openai import OpenAI
-from dotenv import load_dotenv
 
-# -----------------------------------------------------------------------------
-# Environment & OpenAI client setup
-# -----------------------------------------------------------------------------
-load_dotenv()
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    raise ValueError("OPENAI_API_KEY not found in .env file. Server cannot start.")
+if not openrouter_api_key:
+    raise ValueError("OPENROUTER_API_KEY not found in .env file.")
 
-from openai import OpenAI
-
-client = OpenAI(
+# Set up the OpenRouter client with wrapping
+client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
+    api_key=openrouter_api_key
 )
 
-MODEL_NAME = "openai/gpt-4o-mini"
+set_default_openai_client(client)
+
+MODEL_NAME = OpenAIChatCompletionsModel(
+    model="openai/gpt-4o-mini", 
+    openai_client=client
+)

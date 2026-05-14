@@ -1,8 +1,8 @@
 from mcp_server import client, MODEL_NAME
-from typing import Generator
+from typing import AsyncGenerator
 
 # Define the generate flashcards function
-def generate_flashcards(topic: str, num_cards: int = 5) -> Generator[str, None, None]:
+async def generate_flashcards(topic: str, num_cards: int = 5) -> AsyncGenerator[str, None, None]:
     """Stream *num_cards* Q/A flashcards for *topic* in JSON lines format."""
     if num_cards < 1 or num_cards > 20:
         yield "Error: num_cards must be between 1 and 20."
@@ -17,8 +17,8 @@ def generate_flashcards(topic: str, num_cards: int = 5) -> Generator[str, None, 
     )
     user_prompt = f"Create {num_cards} flashcards about {topic}."
 
-    _stream = client.chat.completions.create(
-        model = MODEL_NAME,
+    _stream = await client.chat.completions.create(
+        model = MODEL_NAME.model,
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -26,10 +26,7 @@ def generate_flashcards(topic: str, num_cards: int = 5) -> Generator[str, None, 
         stream = True,
         temperature = 0.8,
     )
-    partial = ""
-    for chunk in _stream:
+    async for chunk in _stream:
         delta = getattr(chunk.choices[0].delta, "content", None)
         if delta:
-            partial += delta
-            yield partial
-
+            yield delta
