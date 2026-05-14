@@ -1,8 +1,10 @@
 from mcp_server import client, MODEL_NAME
 from typing import AsyncGenerator
+from langsmith import wrappers, traceable
 
 # Define the summarize text function
-async def summarize_text(text: str, compression_ratio: float = 0.3) -> AsyncGenerator[str, None, None]:
+@traceable(name="Summarize Text Tool")
+async def summarize_text(text: str, compression_ratio: float = 0.3) -> AsyncGenerator[str, None]:
     """Stream a summary of *text* compressed to roughly *compression_ratio* length.
 
     *compression_ratio* should be between 0.1 and 0.8.
@@ -26,7 +28,9 @@ async def summarize_text(text: str, compression_ratio: float = 0.3) -> AsyncGene
     )
 
     async for chunk in _stream:
-        delta = getattr(chunk.choices[0].delta, "content", None)
-        if delta:
-            yield delta
-
+        # 1. Check if choices actually exists and is not empty
+        if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+            # 2. Now it is safe to access choices[0]
+            delta = getattr(chunk.choices[0].delta, "content", None)
+            if delta:
+                yield delta

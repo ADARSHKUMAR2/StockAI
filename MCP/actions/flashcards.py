@@ -1,8 +1,10 @@
 from mcp_server import client, MODEL_NAME
 from typing import AsyncGenerator
+from langsmith import wrappers, traceable
 
 # Define the generate flashcards function
-async def generate_flashcards(topic: str, num_cards: int = 5) -> AsyncGenerator[str, None, None]:
+@traceable(name="Generate Flashcards Tool")
+async def generate_flashcards(topic: str, num_cards: int = 5) -> AsyncGenerator[str, None]:
     """Stream *num_cards* Q/A flashcards for *topic* in JSON lines format."""
     if num_cards < 1 or num_cards > 20:
         yield "Error: num_cards must be between 1 and 20."
@@ -27,6 +29,9 @@ async def generate_flashcards(topic: str, num_cards: int = 5) -> AsyncGenerator[
         temperature = 0.8,
     )
     async for chunk in _stream:
-        delta = getattr(chunk.choices[0].delta, "content", None)
-        if delta:
-            yield delta
+        # 1. Check if choices actually exists and is not empty
+        if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+            # 2. Now it is safe to access choices[0]
+            delta = getattr(chunk.choices[0].delta, "content", None)
+            if delta:
+                yield delta

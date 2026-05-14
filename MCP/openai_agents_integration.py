@@ -1,5 +1,5 @@
 # Let's Build the AI agent
-from agents import Agent, Runner
+from agents import Agent, Runner, OpenAIChatCompletionsModel, set_default_openai_client, set_tracing_disabled
 from mcp_client import mcp_tool
 from mcp_server import MODEL_NAME, client
 import asyncio
@@ -69,27 +69,24 @@ async def main():
     await mcp_tool.connect() 
 
     result = None
-    try:
 
-        while True:
-            user_input = input("User: ")
-            if user_input.lower() in {"exit", "quit"}:
-                break
-                
-            # If there was a previous interaction (result is not None), it appends the new user message to the past messages (maintaining conversation context).
-            if result is not None:
-                new_input = result.to_input_list() + [{"role": "user", "content": user_input}]
-            else:
-                new_input = [{"role": "user", "content": user_input}]
+    while True:
+        user_input = input("User: ")
+        if user_input.lower() in {"exit", "quit"}:
+            break
             
-            result = await Runner.run(starting_agent = agent, input = new_input)
-            print("\nAssistant:")
-            print(result.final_output)
-            # await viewTools(result)
+        # If there was a previous interaction (result is not None), it appends the new user message to the past messages (maintaining conversation context).
+        if result is not None:
+            new_input = result.to_input_list() + [{"role": "user", "content": user_input}]
+        else:
+            new_input = [{"role": "user", "content": user_input}]
+        
+        result = await Runner.run(starting_agent = agent, input = new_input)
+        print("\nAssistant:")
+        print(result.final_output)
+        # await viewTools(result)
 
-    finally:
-        await mcp_tool.disconnect()
-
+    
 async def viewTools(res):
     # Let's view the list of tools that have been called
     for i in res.to_input_list():
