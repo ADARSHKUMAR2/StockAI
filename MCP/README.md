@@ -1,6 +1,8 @@
 # AI Tutor MCP Toolkit
 
-A small learning stack built with **Gradio**, the **Model Context Protocol (MCP)**, and the **OpenAI Agents SDK** (`agents`). Four tutor actions—explain concepts, summarize text, generate flashcards, and run quizzes—call **OpenRouter** (`openai/gpt-4o-mini`) via an async OpenAI client, stream tokens in the UI, and are also exposed as **MCP tools** when Gradio’s MCP server is enabled.
+A small learning stack built with **Gradio**, the **Model Context Protocol (MCP)**, and the **OpenAI Agents SDK** (`agents`). Four tutor actions—explain concepts, summarize text, generate flashcards, and run quizzes—stream completion tokens in the UI and are exposed as **MCP tools** when Gradio’s MCP server is enabled.
+
+The LLM client is an **`AsyncOpenAI`** instance aimed at **[GitHub Models / Azure AI Inference](https://models.inference.ai.azure.com)** (`gpt-4o-mini`), wrapped with **LangSmith**’s `wrap_openai` for optional observability. `mcp_server.py` calls **`set_tracing_disabled(True)`** on the Agents SDK so built-in agent tracing stays off unless you change that.
 
 ## Surfaces
 
@@ -8,9 +10,9 @@ A small learning stack built with **Gradio**, the **Model Context Protocol (MCP)
 |--------|-------------|
 | **Gradio demo** (`tutor_app.py`) | Tabs for Explain, Summarize, Flashcards, and Quiz. |
 | **MCP over SSE** | Same functions as tools for any MCP client at the Gradio MCP URL (below). |
-| **Agents CLI** (`openai_agents_integration.py`) | An `Agent` + `Runner` loop that connects to the Gradio MCP server and calls those tools in chat. |
+| **Agents CLI** (`openai_agents_integration.py`) | An `Agent` + `Runner` loop that connects to the Gradio MCP server and uses those tools in chat. |
 
-Implementation details: `mcp_server.py` configures `AsyncOpenAI` against OpenRouter, registers it with `set_default_openai_client`, and wraps the model in `OpenAIChatCompletionsModel`. Handlers in `actions/` are **async generators** that stream completion chunks.
+Implementation details: `mcp_server.py` loads env, builds the wrapped async client, **`set_default_openai_client`**, and **`OpenAIChatCompletionsModel`** as `MODEL_NAME`. Handlers in `actions/` are **async generators** with **`@traceable`** (LangSmith) on each tool.
 
 ## Requirements
 
@@ -18,10 +20,10 @@ Implementation details: `mcp_server.py` configures `AsyncOpenAI` against OpenRou
 - Core packages:
 
 ```bash
-pip install gradio openai python-dotenv openai-agents
+pip install gradio openai python-dotenv openai-agents langsmith
 ```
 
-`mcp_client.py` also imports `requests`, `httpx`, `ipython`, and `pillow`; keep them if you reuse that module as a notebook-style client.
+`mcp_client.py` also imports `requests`, `httpx`, `ipython`, and `pillow` if you reuse it outside a minimal CLI.
 
 ## Configuration
 
@@ -29,9 +31,11 @@ Create a `.env` in the **`MCP`** directory (or export variables in your shell):
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENROUTER_API_KEY` | **Required** by `mcp_server.py` for the async client and for `MODEL_NAME`; missing key prevents startup. |
+| `GITHUB_TOKEN` | **Required** for chat completions: used as the API key for `https://models.inference.ai.azure.com`. If unset, `mcp_server.py` raises on import. |
 
-`mcp_client.py` still loads `OPENAI_API_KEY` for compatibility with other snippets; the tutor server path does not require it.
+For LangSmith dashboards (when you enable tracing or use `@traceable` spans), set **`LANGSMITH_API_KEY`** (and related LangSmith env vars) per [LangSmith docs](https://docs.smith.langchain.com/). Agent SDK tracing is disabled in `mcp_server.py` via `set_tracing_disabled(True)`.
+
+`mcp_client.py` may still load `OPENAI_API_KEY` for older snippets; the tutor server path shown here does not use it.
 
 ## Run the Gradio + MCP server
 
@@ -68,21 +72,22 @@ If you change host or port, update `MCP_BASE` in `mcp_client.py` to match.
 python openai_agents_integration.py
 ```
 
-That script defines an `Agent` wired to `MCPServerSse` (see `mcp_client.py`), connects on startup, runs a `input()` loop, and disconnects on exit. Type `exit` or `quit` to leave the loop.
+That script **`await mcp_tool.connect()`** before the REPL, runs **`Runner.run`** in a loop with conversation context from **`result.to_input_list()`**, and exits on **`exit`** / **`quit`**. (Add **`await mcp_tool.disconnect()`** in a `finally` block if you want a clean teardown when leaving the loop.)
 
 ## Project layout
 
 | Path | Role |
 |------|------|
 | `tutor_app.py` | Gradio UI; `launch(..., mcp_server=True)`. |
-| `mcp_server.py` | `load_dotenv`, `OPENROUTER_API_KEY`, `AsyncOpenAI` → OpenRouter, `set_default_openai_client`, `OpenAIChatCompletionsModel` as `MODEL_NAME`. |
-| `actions/*.py` | Async streaming tool implementations (`explain_concept`, `summarize_text`, `generate_flashcards`, `quiz_me`). |
-| `mcp_client.py` | `MCPServerSse` config pointing at the local Gradio MCP URL. |
-| `openai_agents_integration.py` | Agent instructions + `Runner` REPL using the MCP tools. |
+| `mcp_server.py` | Env load, **`GITHUB_TOKEN`**, wrapped **`AsyncOpenAI`** → Azure inference base URL, **`set_default_openai_client`**, **`OpenAIChatCompletionsModel`** (`gpt-4o-mini`), **`set_tracing_disabled(True)`**. |
+| `actions/*.py` | Async streaming tools (`explain_concept`, `summarize_text`, `generate_flashcards`, `quiz_me`) with **`@traceable`** and safe chunk handling. |
+| `mcp_client.py` | **`MCPServerSse`** config pointing at the local Gradio MCP URL. |
+| `openai_agents_integration.py` | Agent instructions + **`Runner`** REPL using MCP tools. |
 
 ## Troubleshooting
 
-- **`OPENROUTER_API_KEY not found`**: Set it in `.env` under `MCP/` before importing `mcp_server` or running `tutor_app.py` / `openai_agents_integration.py`.
-- **Import errors**: Run scripts from the `MCP` folder or adjust `PYTHONPATH`.
-- **Agent cannot reach tools**: Ensure `tutor_app.py` is running first and that `MCP_BASE` matches your Gradio URL (including port).
-- **OpenRouter errors**: Confirm the model is allowed for your key and that billing/limits are OK.
+- **Startup error about a missing API key**: Set **`GITHUB_TOKEN`** in `.env` under `MCP/` (see `mcp_server.py`).
+- **401 / model access from inference host**: Confirm the token is valid for GitHub Models / Azure AI inference and that **`gpt-4o-mini`** is available to that endpoint.
+- **Import errors**: Run scripts from the `MCP` folder or adjust **`PYTHONPATH`**.
+- **Agent cannot reach tools**: Start **`tutor_app.py`** first; align **`MCP_BASE`** with your Gradio URL and port.
+- **Streaming / empty deltas**: Tools guard **`chunk.choices`** before reading **`delta`**; persistent empty streams usually mean API or model errors—check the yielded **`[TOOL ERROR]`** text from **`quiz_me`** (and similar) or exceptions in logs.

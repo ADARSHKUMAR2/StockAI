@@ -18,7 +18,7 @@ partial tokens for low‑latency UX.
 """
 set_tracing_disabled(True)
 if not github_token:
-    raise ValueError("OPENROUTER_API_KEY not found in .env file.")
+    raise ValueError("GITHUB_TOKEN not found in .env file.")
 
 # Set up the OpenRouter client with wrapping
 client = wrappers.wrap_openai(AsyncOpenAI(
